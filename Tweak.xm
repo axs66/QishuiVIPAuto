@@ -1,12 +1,17 @@
 #import <UIKit/UIKit.h>
 
 // 声明外部类
+typedef NS_ENUM(NSInteger, LunaToastType) {
+    LunaToastTypeSuccess = 0,
+    LunaToastTypeError = 1,
+    LunaToastTypeInfo = 2,
+};
 @interface LunaUtils : NSObject
 + (void)sendAPIRequestIncentiveDone:(void (^)(NSError *error, id responseObject))completion;
 @end
 
 @interface LunaToast : NSObject
-+ (void)showWithMessage:(NSString *)message type:(NSInteger)type;
++ (void)showWithMessage:(NSString *)message type:(LunaToastType)type;
 @end
 
 @interface SchubertIncentiveManager : NSObject
@@ -66,16 +71,22 @@ static void QishuiVIPAuto_ScheduleRequestIfNeeded(void) {
                 if (error) {
                     NSLog(@"[QishuiVIPAuto] ❌ 请求失败：%@", error);
                     [LunaToast showWithMessage:[NSString stringWithFormat:@"网络错误：%@", error.localizedDescription]
-                                          type:1];
+                                          type:LunaToastTypeError];
                 } else {
-                    NSNumber *statusCode = responseObject[@"status_code"];
+                    if (![responseObject isKindOfClass:[NSDictionary class]]) {
+                        NSLog(@"[QishuiVIPAuto] ⚠️ 非预期响应：%@", responseObject);
+                        [LunaToast showWithMessage:@"服务响应异常" type:LunaToastTypeError];
+                        return;
+                    }
+
+                    NSNumber *statusCode = ((NSDictionary *)responseObject)[@"status_code"];
                     NSLog(@"[QishuiVIPAuto] ✅ 响应：%@", responseObject);
                     
                     if ([statusCode intValue] == 0) {
-                        [LunaToast showWithMessage:@"🎉 畅听权益领取成功" type:0];
+                        [LunaToast showWithMessage:@"🎉 畅听权益领取成功" type:LunaToastTypeSuccess];
                     } else {
-                        NSString *statusMsg = responseObject[@"status_info"][@"status_msg"] ?: @"领取失败";
-                        [LunaToast showWithMessage:statusMsg type:1];
+                        NSString *statusMsg = ((NSDictionary *)responseObject)[@"status_info"][@"status_msg"] ?: @"领取失败";
+                        [LunaToast showWithMessage:statusMsg type:LunaToastTypeError];
                     }
 
                     if ([self respondsToSelector:@selector(stopPeriodicRequestTimer)]) {
