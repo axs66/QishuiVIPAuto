@@ -1,5 +1,5 @@
 {
     Filter = {
-        Bundles = ("com.bytedance.qishui");
+        Bundles = ("com.soda.music");
     };
 }
