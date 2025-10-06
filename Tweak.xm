@@ -16,6 +16,41 @@
 @end
 
 static NSLock *requestLock;
+static BOOL hasScheduledTodayRequest = NO;
+
+static BOOL QishuiVIPAuto_IsRequestedToday(void) {
+    NSDate *lastDate = [[NSUserDefaults standardUserDefaults] objectForKey:@"LastIncentiveRequestDate"];
+    if (!lastDate) return NO;
+    return [[NSCalendar currentCalendar] isDateInToday:lastDate];
+}
+
+static void QishuiVIPAuto_ScheduleRequestIfNeeded(void) {
+    if (QishuiVIPAuto_IsRequestedToday()) {
+        NSLog(@"[QishuiVIPAuto] ⏭ 今日已领取，跳过");
+        return;
+    }
+
+    if (!requestLock) requestLock = [[NSLock alloc] init];
+
+    if (hasScheduledTodayRequest) {
+        NSLog(@"[QishuiVIPAuto] ⏭ 已安排本次会话的领取请求，去抖");
+        return;
+    }
+
+    hasScheduledTodayRequest = YES;
+
+    id mgr = [NSClassFromString(@"SchubertIncentiveManager") sharedInstance];
+    if ([mgr respondsToSelector:@selector(sendIncentiveRequest)]) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(15 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            hasScheduledTodayRequest = NO;
+            [mgr performSelector:@selector(sendIncentiveRequest)];
+        });
+        NSLog(@"[QishuiVIPAuto] ⏳ 已安排 15 秒后发送领取请求");
+    } else {
+        hasScheduledTodayRequest = NO;
+        NSLog(@"[QishuiVIPAuto] ⚠️ 未找到 SchubertIncentiveManager.sendIncentiveRequest");
+    }
+}
 
 // Hook 主类，自动执行领取逻辑
 %hook SchubertIncentiveManager
@@ -66,19 +101,14 @@ static NSLock *requestLock;
 
 %end
 
-// 在 App 启动后自动触发
-%hook AppDelegate
-- (void)applicationDidBecomeActive:(UIApplication *)application {
-    %orig;
-    
-    NSDate *lastDate = [[NSUserDefaults standardUserDefaults] objectForKey:@"LastIncentiveRequestDate"];
-    if (![[NSCalendar currentCalendar] isDateInToday:lastDate]) {
-        id mgr = [NSClassFromString(@"SchubertIncentiveManager") sharedInstance];
-        if ([mgr respondsToSelector:@selector(sendIncentiveRequest)]) {
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(15 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                [mgr performSelector:@selector(sendIncentiveRequest)];
-            });
-        }
+// 通过前台激活通知触发，更通用且避免侵入 AppDelegate
+%ctor {
+    @autoreleasepool {
+        [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationDidBecomeActiveNotification
+                                                          object:nil
+                                                           queue:[NSOperationQueue mainQueue]
+                                                      usingBlock:^(__unused NSNotification * _Nonnull note) {
+            QishuiVIPAuto_ScheduleRequestIfNeeded();
+        }];
     }
 }
-%end
