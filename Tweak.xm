@@ -1,4 +1,5 @@
 #import <UIKit/UIKit.h>
+#import <objc/message.h>
 
 // 声明外部类
 typedef NS_ENUM(NSInteger, LunaToastType) {
@@ -22,6 +23,28 @@ typedef NS_ENUM(NSInteger, LunaToastType) {
 
 static NSLock *requestLock;
 static BOOL hasScheduledTodayRequest = NO;
+
+static void QishuiVIPAuto_ShowToast(NSString *message, LunaToastType type) {
+    Class toastCls = NSClassFromString(@"LunaToast");
+    SEL sel = @selector(showWithMessage:type:);
+    if (toastCls && [toastCls respondsToSelector:sel]) {
+        ((void (*)(id, SEL, NSString *, NSInteger))objc_msgSend)(toastCls, sel, message, (NSInteger)type);
+    } else {
+        NSLog(@"[QishuiVIPAuto] Toast: %@ (type=%ld)", message, (long)type);
+    }
+}
+
+static void QishuiVIPAuto_SendAPIRequest(void (^completion)(NSError *error, id responseObject)) {
+    Class utilsCls = NSClassFromString(@"LunaUtils");
+    SEL sel = @selector(sendAPIRequestIncentiveDone:);
+    if (utilsCls && [utilsCls respondsToSelector:sel]) {
+        ((void (*)(id, SEL, void (^)(NSError *, id)))objc_msgSend)(utilsCls, sel, completion);
+    } else {
+        if (completion) completion([NSError errorWithDomain:@"QishuiVIPAuto"
+                                                       code:-1
+                                                   userInfo:@{NSLocalizedDescriptionKey: @"未找到 LunaUtils 接口"}], nil);
+    }
+}
 
 static BOOL QishuiVIPAuto_IsRequestedToday(void) {
     NSDate *lastDate = [[NSUserDefaults standardUserDefaults] objectForKey:@"LastIncentiveRequestDate"];
@@ -67,15 +90,14 @@ static void QishuiVIPAuto_ScheduleRequestIfNeeded(void) {
         @try {
             NSLog(@"[QishuiVIPAuto] 🚀 开始发送畅听权益请求...");
             
-            [LunaUtils sendAPIRequestIncentiveDone:^(NSError *error, id responseObject) {
+            QishuiVIPAuto_SendAPIRequest(^(NSError *error, id responseObject) {
                 if (error) {
                     NSLog(@"[QishuiVIPAuto] ❌ 请求失败：%@", error);
-                    [LunaToast showWithMessage:[NSString stringWithFormat:@"网络错误：%@", error.localizedDescription]
-                                          type:LunaToastTypeError];
+                    QishuiVIPAuto_ShowToast([NSString stringWithFormat:@"网络错误：%@", error.localizedDescription], LunaToastTypeError);
                 } else {
                     if (![responseObject isKindOfClass:[NSDictionary class]]) {
                         NSLog(@"[QishuiVIPAuto] ⚠️ 非预期响应：%@", responseObject);
-                        [LunaToast showWithMessage:@"服务响应异常" type:LunaToastTypeError];
+                        QishuiVIPAuto_ShowToast(@"服务响应异常", LunaToastTypeError);
                         return;
                     }
 
@@ -83,10 +105,10 @@ static void QishuiVIPAuto_ScheduleRequestIfNeeded(void) {
                     NSLog(@"[QishuiVIPAuto] ✅ 响应：%@", responseObject);
                     
                     if ([statusCode intValue] == 0) {
-                        [LunaToast showWithMessage:@"🎉 畅听权益领取成功" type:LunaToastTypeSuccess];
+                        QishuiVIPAuto_ShowToast(@"🎉 畅听权益领取成功", LunaToastTypeSuccess);
                     } else {
                         NSString *statusMsg = ((NSDictionary *)responseObject)[@"status_info"][@"status_msg"] ?: @"领取失败";
-                        [LunaToast showWithMessage:statusMsg type:LunaToastTypeError];
+                        QishuiVIPAuto_ShowToast(statusMsg, LunaToastTypeError);
                     }
 
                     if ([self respondsToSelector:@selector(stopPeriodicRequestTimer)]) {
@@ -97,7 +119,7 @@ static void QishuiVIPAuto_ScheduleRequestIfNeeded(void) {
                                                               forKey:@"LastIncentiveRequestDate"];
                     [[NSUserDefaults standardUserDefaults] synchronize];
                 }
-            }];
+            });
         }
         @catch (NSException *exception) {
             NSLog(@"[QishuiVIPAuto] ⚠️ 异常：%@", exception);
