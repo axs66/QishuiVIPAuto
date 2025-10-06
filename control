@@ -1,0 +1,10 @@
+Package: com.axs.qishuivipauto
+Name: QishuiVIPAuto
+Version: 1.0.0
+Architecture: iphoneos-arm64
+Description: 汽水音乐自动领取会员权益插件，每日自动请求一次畅听权益。
+Maintainer: Axs
+Author: Axs
+Section: Tweaks
+Depends: mobilesubstrate
+Icon: https://axs66.github.io/repo/icon/qishuivipauto.png
