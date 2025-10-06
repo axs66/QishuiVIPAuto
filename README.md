@@ -13,4 +13,21 @@
 
 ## 📦 编译与安装
 ```bash
-make package install
+make package
+make install
+```
+
+## ⚙️ 环境要求
+- 已安装 Theos，并正确设置 `THEOS` 环境变量
+- 设备为越狱 iOS（iOS 14 ~ 17），并安装 `mobilesubstrate`
+- 目标 App：`SchubertApp`（汽水音乐），Bundle 过滤在 `QishuiVIPAuto.plist`
+
+## 🔧 实现说明
+- 通过监听 `UIApplicationDidBecomeActiveNotification` 在应用进入前台时触发检测
+- 每日仅触发一次：使用 `NSUserDefaults` 记录 `LastIncentiveRequestDate`
+- 互斥与去抖：使用 `NSLock` 和会话内布尔标记规避重复触发
+- 使用外部 `LunaUtils` 请求 API，并通过 `LunaToast` 反馈结果
+
+## 📝 变更
+- 使用通知替换原先的 `AppDelegate` 方法 Hook，兼容性更好
+- 抽取公共检测/调度函数，强化健壮性与日志
